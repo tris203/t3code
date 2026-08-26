@@ -251,7 +251,10 @@ export const make = Effect.gen(function* () {
           const environmentId = entry.target.environmentId;
           const scope = yield* Scope.make();
           const supervisor = yield* EnvironmentSupervisor.make(entry, {
-            initiallyDesired: false,
+            // Registry-owned supervisors always connect immediately. Starting
+            // them as desired avoids publishing a transient manual-disconnect
+            // state before the connect signal is processed.
+            initiallyDesired: true,
           }).pipe(
             Effect.provideService(Connectivity.Connectivity, connectivity),
             Effect.provideService(ConnectionDriver.ConnectionDriver, driver),
@@ -259,7 +262,6 @@ export const make = Effect.gen(function* () {
             Scope.provide(scope),
             Effect.onError(() => Scope.close(scope, Exit.void)),
           );
-          yield* supervisor.connect;
           yield* SubscriptionRef.update(serviceScopes, (current) => {
             const next = new Map(current);
             next.set(environmentId, { entry, supervisor, scope });
