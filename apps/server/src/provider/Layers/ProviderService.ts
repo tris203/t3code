@@ -46,6 +46,7 @@ import * as SchemaIssue from "effect/SchemaIssue";
 import * as Stream from "effect/Stream";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
+import type { McpCapability } from "../../mcp/McpInvocationContext.ts";
 import * as ServerConfig from "../../config.ts";
 import {
   increment,
@@ -739,7 +740,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     provider: string,
   ) =>
     Effect.gen(function* () {
-      const capabilities: Array<"preview" | "monitor"> = [];
+      const capabilities: Array<McpCapability> = [];
       if (yield* agentBrowserAccessEnabled(threadId)) capabilities.push("preview");
       if (provider === "codex") capabilities.push("monitor");
       yield* revokeMcpCredential(threadId);
