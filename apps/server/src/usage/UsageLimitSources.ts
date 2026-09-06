@@ -87,7 +87,7 @@ function sourceLabel(id: string, config: UsageLimitSourceConfig): string {
   }
 }
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const httpClient = yield* HttpClient.HttpClient;
   const settingsService = yield* ServerSettingsService;
   const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
