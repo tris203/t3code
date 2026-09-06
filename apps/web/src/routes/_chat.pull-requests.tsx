@@ -120,6 +120,7 @@ import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../
 import { SidebarInset } from "../components/ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../components/ui/tooltip";
 import { useLiveRefresh } from "../hooks/useLiveRefresh";
+import { useEscapeToGoBack } from "../hooks/useNavigateBack";
 import { usePanelAnimationSettings, usePanelPresence } from "../panelAnimations";
 import {
   pullRequestSurfaceId,
@@ -290,6 +291,7 @@ export const Route = createFileRoute("/_chat/pull-requests")({
 });
 
 function PullRequestsRouteView() {
+  useEscapeToGoBack();
   const search = Route.useSearch();
   const sort = search.sort ?? "ready";
   const statsPolicy: PullRequestStatsPolicy =
