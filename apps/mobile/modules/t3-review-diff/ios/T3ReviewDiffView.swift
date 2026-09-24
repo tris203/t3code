@@ -3,6 +3,8 @@ import UIKit
 
 private struct ReviewDiffNativeRow: Decodable, Sendable {
   let kind: String
+  let sourceRow: Int?
+  let rowCount: Int?
   let id: String
   let fileId: String?
   let filePath: String?
@@ -436,7 +438,9 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
           }
           self.rows = decodedRows
           self.contentView.rows = decodedRows
-          self.hasAppliedInitialRowIndex = false
+          if decodedRows.first?.sourceRow == nil {
+            self.hasAppliedInitialRowIndex = false
+          }
           self.lastVisibleFileId = nil
           self.emitDebug("rows-decoded", [
             "rows": decodedRows.count,
@@ -444,6 +448,7 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
           ])
           self.updateContentMetrics()
           self.applyPendingScrollIfNeeded()
+          self.emitVisibleRange(reason: "rows-loaded")
         }
       } catch {
         let message = error.localizedDescription
@@ -731,7 +736,8 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
       return
     }
 
-    let debugKey = "\(range.firstRowIndex):\(range.lastRowIndex):\(Int(scrollView.bounds.height))"
+    let sourceRow = contentView.firstVisibleSourceRow() ?? -1
+    let debugKey = "\(range.firstRowIndex):\(range.lastRowIndex):\(sourceRow):\(Int(scrollView.bounds.height))"
     guard debugKey != lastVisibleRangeDebugKey else {
       return
     }
@@ -741,6 +747,7 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
       "reason": reason,
       "firstRowIndex": range.firstRowIndex,
       "lastRowIndex": range.lastRowIndex,
+      "sourceRow": sourceRow,
       "totalRows": rows.count,
     ])
   }
@@ -839,7 +846,16 @@ public final class T3ReviewDiffView: ExpoView, UIScrollViewDelegate {
     contentView.verticalOffset = scrollView.contentOffset.y
     contentView.invalidateVisibleViewport()
     emitVisibleFileIfNeeded()
+    if let sourceRow = contentView.firstVisibleSourceRow() {
+      let page = sourceRow / 256
+      if page != lastRequestedSourcePage {
+        lastRequestedSourcePage = page
+        emitDebug("diff-window", ["sourceRow": sourceRow])
+      }
+    }
   }
+
+  private var lastRequestedSourcePage: Int? = nil
 
   private func applyPendingScrollIfNeeded() {
     guard let fileId = pendingScrollFileId,
@@ -925,8 +941,14 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
   var rows: [ReviewDiffNativeRow] = [] {
     didSet {
       stopHorizontalDeceleration()
-      horizontalOffsetsByFileId.removeAll()
-      headerPathOffsetsByFileId.removeAll()
+      if rows.first?.sourceRow == nil {
+        horizontalOffsetsByFileId.removeAll()
+        headerPathOffsetsByFileId.removeAll()
+      } else {
+        let fileIds = Set(rows.filter { $0.kind == "file" }.map { resolvedFileId(for: $0) })
+        horizontalOffsetsByFileId = horizontalOffsetsByFileId.filter { fileIds.contains($0.key) }
+        headerPathOffsetsByFileId = headerPathOffsetsByFileId.filter { fileIds.contains($0.key) }
+      }
       activePanFileId = nil
       activePanKind = nil
       tokenAttributedStringsByRowId.removeAll()
@@ -1035,6 +1057,9 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     }
     if collapsedFileIds.contains(resolvedFileId(for: row)) {
       return 0
+    }
+    if row.kind == "placeholder" {
+      return style.rowHeight * CGFloat(max(1, row.rowCount ?? 1))
     }
     if row.kind == "notice" {
       return max(style.rowHeight * 2, 44)
@@ -1617,6 +1642,20 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     contentWidthsByFileId[fileId] ?? min(style.contentWidth, max(viewportWidth, 0))
   }
 
+  func firstVisibleSourceRow() -> Int? {
+    guard let range = currentVisibleRowRange() else { return nil }
+    let visible = range.firstRowIndex...range.lastRowIndex
+    let index = visible.first { rows[$0].kind == "placeholder" && rowOffsets[$0 + 1] > rowOffsets[$0] }
+      ?? visible.first { rows[$0].kind != "file" && rows[$0].sourceRow != nil && rowOffsets[$0 + 1] > rowOffsets[$0] }
+      ?? range.firstRowIndex
+    guard let source = rows[index].sourceRow else { return nil }
+    let row = rows[index]
+    let offset = row.kind == "placeholder"
+      ? min(max(0, Int((verticalOffset - rowOffsets[index]) / style.rowHeight)), max(0, (row.rowCount ?? 1) - 1))
+      : 0
+    return source + offset
+  }
+
   func currentVisibleRowRange() -> (firstRowIndex: Int, lastRowIndex: Int)? {
     guard !rows.isEmpty else {
       return nil
@@ -1789,6 +1828,9 @@ private final class ReviewDiffContentView: UIView, UIGestureRecognizerDelegate {
     let fullRect = CGRect(x: 0, y: rowY, width: max(bounds.width, viewportWidth), height: height(for: row))
 
     switch row.kind {
+    case "placeholder":
+      let loadingRect = CGRect(x: 0, y: max(0, rowY), width: fullRect.width, height: style.rowHeight)
+      drawHunkRow(row, rect: loadingRect, context: context)
     case "file":
       drawFileRow(row, rect: fullRect, context: context)
     case "hunk":

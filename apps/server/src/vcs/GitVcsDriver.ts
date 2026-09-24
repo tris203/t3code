@@ -466,6 +466,7 @@ const gitCommand = (
   args: ReadonlyArray<string>,
   options?: {
     readonly stdin?: string;
+    readonly onStdoutChunk?: (chunk: Uint8Array) => void;
     readonly env?: NodeJS.ProcessEnv;
     readonly allowNonZeroExit?: boolean;
     readonly timeoutMs?: number;
@@ -481,6 +482,7 @@ const gitCommand = (
     cwd,
     spawnCwd: globalThis.process.cwd(),
     ...(options?.stdin !== undefined ? { stdin: options.stdin } : {}),
+    ...(options?.onStdoutChunk !== undefined ? { onStdoutChunk: options.onStdoutChunk } : {}),
     ...(options?.env !== undefined ? { env: options.env } : {}),
     ...(options?.allowNonZeroExit !== undefined
       ? { allowNonZeroExit: options.allowNonZeroExit }
@@ -521,6 +523,7 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
 
   const execute: VcsDriver.VcsDriver["Service"]["execute"] = (input) =>
     gitCommand(vcsProcess, input.operation, input.cwd, input.args, {
+      ...(input.onStdoutChunk !== undefined ? { onStdoutChunk: input.onStdoutChunk } : {}),
       ...(input.stdin !== undefined ? { stdin: input.stdin } : {}),
       ...(input.env !== undefined ? { env: input.env } : {}),
       ...(input.allowNonZeroExit !== undefined ? { allowNonZeroExit: input.allowNonZeroExit } : {}),
@@ -1103,7 +1106,10 @@ export const makeVcsDriverShape = Effect.fn("makeGitVcsDriverShape")(function* (
           `${input.toCheckpointRef}^{commit}`,
         ],
         allowNonZeroExit: true,
-        maxOutputBytes: CHECKPOINT_DIFF_MAX_OUTPUT_BYTES,
+        ...(input.onStdoutChunk ? { onStdoutChunk: input.onStdoutChunk } : {}),
+        // Windowed readers consume every byte through the callback; only diagnostics
+        // need buffering. Legacy full-patch callers keep their existing output limit.
+        maxOutputBytes: input.onStdoutChunk ? 4_096 : CHECKPOINT_DIFF_MAX_OUTPUT_BYTES,
         outputMode: input.format === "numstat" ? "error" : "truncate",
       });
 
