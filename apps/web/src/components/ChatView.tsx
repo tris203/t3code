@@ -2830,9 +2830,10 @@ export default function ChatView(props: ChatViewProps) {
     scratchWorkspaceRootFor,
   ]);
   const hasMultipleEnvironments = logicalProjectEnvironments.length > 1;
-  // Only drafts can switch machines. A started thread may not have loaded its
-  // messages yet (e.g. its machine is offline), so envLocked alone can miss it.
-  const canChangeEnvironment = Boolean(draftId) && hasMultipleEnvironments;
+  // Only unsent drafts can switch machines. A started thread may not have loaded
+  // its messages yet (e.g. its machine is offline), so envLocked alone can miss it.
+  const canChangeEnvironment =
+    Boolean(draftId) && !draftThread?.promotedTo && hasMultipleEnvironments;
   const canAutoBalanceEnvironments = hasMultipleEnvironments && !activeProjectIsScratch;
   const activeEnvironmentOption =
     logicalProjectEnvironments.find(
