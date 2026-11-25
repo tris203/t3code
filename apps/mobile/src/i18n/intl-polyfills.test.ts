@@ -18,3 +18,22 @@ describe("shared plural rules", () => {
     expect(new Intl.PluralRules("en")).toBeInstanceOf(Intl.PluralRules);
   });
 });
+
+describe("shared locale resolution", () => {
+  it("builds one Intl.Locale for equal arguments", () => {
+    const english = new Intl.Locale("en");
+
+    expect(new Intl.Locale("en")).toBe(english);
+    expect(new Intl.Locale("en", { region: "GB" })).not.toBe(english);
+    expect(new Intl.Locale("en", { region: "GB" }).baseName).toBe("en-GB");
+    expect(english).toBeInstanceOf(Intl.Locale);
+  });
+
+  it("gives each supportedLocalesOf caller its own array", () => {
+    const first = Intl.NumberFormat.supportedLocalesOf(["de"]);
+    const second = Intl.NumberFormat.supportedLocalesOf(["de"]);
+
+    expect(second).toEqual(first);
+    expect(second).not.toBe(first);
+  });
+});

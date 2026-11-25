@@ -17,24 +17,45 @@ import "@formatjs/intl-pluralrules/locale-data/ru";
 import "@formatjs/intl-pluralrules/locale-data/sv";
 import "@formatjs/intl-pluralrules/locale-data/zh";
 
-// GT builds a new Intl.PluralRules for every plural message it formats, and the polyfill's
-// constructor compares the locale with every locale it knows. One launch formats over a hundred
-// plural messages, so equal arguments share one instance. An instance holds no state that changes.
-const PolyfilledPluralRules = Intl.PluralRules;
-const sharedPluralRules = new Map<string, Intl.PluralRules>();
-// The property is read-only in the lib types; the polyfill defines it the same way.
-Object.defineProperty(Intl, "PluralRules", {
+// GT builds a new Intl.PluralRules and resolves an Intl.Locale (through
+// NumberFormat.supportedLocalesOf) for every message it formats, and each polyfilled step
+// canonicalizes against every locale it knows. One launch formats hundreds of messages, so equal
+// arguments share one result. Neither object holds state that changes.
+function shareInstances(name: "PluralRules" | "Locale") {
+  const shared = new Map<string, object>();
+  // The property is read-only in the lib types; the polyfill defines it the same way.
+  Object.defineProperty(Intl, name, {
+    configurable: true,
+    writable: true,
+    value: new Proxy(Intl[name], {
+      construct(target, args: ReadonlyArray<unknown>) {
+        const key = JSON.stringify(args);
+        let instance = shared.get(key);
+        if (instance === undefined) {
+          instance = Reflect.construct(target, args) as object;
+          shared.set(key, instance);
+        }
+        return instance;
+      },
+    }),
+  });
+}
+shareInstances("PluralRules");
+shareInstances("Locale");
+
+const supportedNumberFormatLocales = new Map<string, ReadonlyArray<string>>();
+const supportedLocalesOf = Intl.NumberFormat.supportedLocalesOf;
+Object.defineProperty(Intl.NumberFormat, "supportedLocalesOf", {
   configurable: true,
   writable: true,
-  value: new Proxy(PolyfilledPluralRules, {
-    construct(target, args: ConstructorParameters<typeof Intl.PluralRules>) {
-      const key = JSON.stringify(args);
-      let rules = sharedPluralRules.get(key);
-      if (rules === undefined) {
-        rules = new target(...args);
-        sharedPluralRules.set(key, rules);
-      }
-      return rules;
-    },
-  }),
+  value: (...args: Parameters<typeof supportedLocalesOf>) => {
+    const key = JSON.stringify(args);
+    let supported = supportedNumberFormatLocales.get(key);
+    if (supported === undefined) {
+      supported = supportedLocalesOf(...args);
+      supportedNumberFormatLocales.set(key, supported);
+    }
+    // Callers own the array they get back.
+    return [...supported];
+  },
 });
